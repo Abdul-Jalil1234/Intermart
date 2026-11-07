@@ -1,0 +1,121 @@
+diff --git a/components/Footer.tsx b/components/Footer.tsx
+index 22db8c2..986bb71 100644
+--- a/components/Footer.tsx
++++ b/components/Footer.tsx
+@@ -2,6 +2,7 @@ import Link from "next/link";
+ import Logo from "./common/Logo";
+ import { categoriesData, quickLinksData } from "@/constants";
+ import { contactConfig } from "@/config/contact";
++import { siteConfig } from "@/config/site";
+ import FooterTop from "./layout/FooterTop";
+ import SocialMedia from "./common/SocialMedia";
+ import NewsletterForm from "./NewsletterForm";
+@@ -75,11 +76,8 @@ const Footer = () => {
+         <div className="py-6 border-t text-center text-sm text-gray-600">
+           <p>
+             © {new Date().getFullYear()}{" "}
+-            <span className="text-dark-color font-black tracking-wider uppercase hover:text-shop_dark_green hoverEffect group font-sans">
+-              Tita
+-              <span className="text-shop_dark_green group-hover:text-dark-color hoverEffect">
+-                an
+-              </span>
++            <span className="text-dark-color font-black tracking-wider uppercase hover:text-shop_dark_green hoverEffect font-sans">
++              {siteConfig.displayName}
+             </span>
+             . All rights reserved.
+           </p>
+diff --git a/components/ProductGrid.tsx b/components/ProductGrid.tsx
+index 585b6da..24710be 100644
+--- a/components/ProductGrid.tsx
++++ b/components/ProductGrid.tsx
+@@ -48,12 +48,15 @@ const ProductGrid = () => {
+   const [stockStatus, setStockStatus] = useState<string>("all");
+   const [rating, setRating] = useState<string>("all");
+ 
+-  const query = `*[_type == "product" && variant == $variant] | order(${getSortQuery(
++  const query = `*[_type == "product" && ($category == "all" || references(*[_type == "category" && slug.current == $category]._id))] | order(${getSortQuery(
+     sortBy
+   )}){
+   ...,"categories": categories[]->title
+ }`;
+-  const params = { variant: selectedTab.toLowerCase() };
++  const params = {
++    category:
++      productType.find((t) => t.title === selectedTab)?.value ?? "all",
++  };
+ 
+   function getSortQuery(sort: SortOption): string {
+     switch (sort) {
+diff --git a/constants/index.ts b/constants/index.ts
+index 3a8bfa4..d29d91a 100644
+--- a/constants/index.ts
++++ b/constants/index.ts
+@@ -9,11 +9,14 @@ export const headerData = [
+   { title: "Contact", href: "/contact" },
+ ];
+ 
++// Home page tabs: "all" shows everything, other values are category slugs in Sanity.
+ export const productType = [
+-  { title: "Gadget", value: "gadget" },
+-  { title: "Appliances", value: "appliances" },
+-  { title: "Refrigerators", value: "refrigerators" },
+-  { title: "Others", value: "others" },
++  { title: "All", value: "all" },
++  { title: "Fruits & Vegetables", value: "fruits-vegetables" },
++  { title: "Dairy & Eggs", value: "dairy-eggs" },
++  { title: "Bakery", value: "bakery" },
++  { title: "Beverages", value: "beverages" },
++  { title: "Snacks & Sweets", value: "snacks-sweets" },
+ ];
+ 
+ export const quickLinksData = [
+@@ -26,16 +29,14 @@ export const quickLinksData = [
+ ];
+ 
+ export const categoriesData = [
+-  { title: "Mobiles", href: "mobiles" },
+-  { title: "Appliances", href: "appliances" },
+-  { title: "Smartphones", href: "smartphones" },
+-  { title: "Air Conditioners", href: "air-conditioners" },
+-  { title: "Washing Machine", href: "washing-machine" },
+-  { title: "Kitchen Appliances", href: "kitchen-appliances" },
+-  { title: "Gadget Accessories", href: "gadget-accessories" },
+-  // { title: "Electronics", href: "electronics" },
+-  // { title: "Home & Garden", href: "home-garden" },
+-  // { title: "Sports & Fitness", href: "sports-fitness" },
++  { title: "Fruits & Vegetables", href: "fruits-vegetables" },
++  { title: "Dairy & Eggs", href: "dairy-eggs" },
++  { title: "Bakery", href: "bakery" },
++  { title: "Meat & Fish", href: "meat-fish" },
++  { title: "Rice, Pasta & Grains", href: "rice-pasta-grains" },
++  { title: "Snacks & Sweets", href: "snacks-sweets" },
++  { title: "Beverages", href: "beverages" },
++  { title: "Household & Cleaning", href: "household" },
+ ];
+ 
+ // Enhanced user account menu items
+diff --git a/store.ts b/store.ts
+index 6069f07..5b0f877 100644
+--- a/store.ts
++++ b/store.ts
+@@ -1,6 +1,7 @@
+ import { Product } from "./sanity.types";
+ import { create } from "zustand";
+ import { persist } from "zustand/middleware";
++import { siteConfig } from "@/config/site";
+ import _ from "lodash";
+ import type { PrizeProduct } from "./types/wheel";
+ 
+@@ -230,7 +231,11 @@ const useCartStore = create<StoreState>()(
+         });
+       },
+     }),
+-    { name: "cart-store" }
++    {
++      // Brand-specific key so another store on the same origin (e.g. localhost:3000)
++      // never loads this store's cart.
++      name: `${siteConfig.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-cart-store`,
++    }
+   )
+ );
+ 

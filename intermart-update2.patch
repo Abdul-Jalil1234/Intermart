@@ -1,0 +1,717 @@
+diff --git a/.env.example b/.env.example
+index 70ae027..237153d 100644
+--- a/.env.example
++++ b/.env.example
+@@ -127,3 +127,20 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
+ PIXABAY_API_KEY=
+ UNSPLASH_ACCESS_KEY=
+ PHOTO_PROVIDER=
++
++# ---------------------------------------------------------------------------
++# About page – leadership team (all optional; default is a neutral SVG avatar)
++# To use a photo: put it in public/images/team/ and set e.g. /images/team/ceo.jpg
++# ---------------------------------------------------------------------------
++NEXT_PUBLIC_TEAM_CEO_NAME=
++NEXT_PUBLIC_TEAM_CEO_ROLE=
++NEXT_PUBLIC_TEAM_CEO_DESCRIPTION=
++NEXT_PUBLIC_TEAM_CEO_IMAGE=
++NEXT_PUBLIC_TEAM_CTO_NAME=
++NEXT_PUBLIC_TEAM_CTO_ROLE=
++NEXT_PUBLIC_TEAM_CTO_DESCRIPTION=
++NEXT_PUBLIC_TEAM_CTO_IMAGE=
++NEXT_PUBLIC_TEAM_DESIGN_NAME=
++NEXT_PUBLIC_TEAM_DESIGN_ROLE=
++NEXT_PUBLIC_TEAM_DESIGN_DESCRIPTION=
++NEXT_PUBLIC_TEAM_DESIGN_IMAGE=
+diff --git a/app/(client)/(public)/about/page.tsx b/app/(client)/(public)/about/page.tsx
+index d48b146..bc5e7c2 100644
+--- a/app/(client)/(public)/about/page.tsx
++++ b/app/(client)/(public)/about/page.tsx
+@@ -2,6 +2,7 @@
+ 
+ 
+ import { siteConfig } from "@/config/site";
++import { teamConfig } from "@/config/team";
+ import { motion } from "motion/react";
+ import {
+   Heart,
+@@ -57,26 +58,7 @@ const AboutPage = () => {
+     },
+   ];
+ 
+-  const team = [
+-    {
+-      name: "Sarah Johnson",
+-      role: "CEO & Founder",
+-      image: "/images/team/ceo.jpg",
+-      description: "Visionary leader with 15+ years in e-commerce",
+-    },
+-    {
+-      name: "Michael Chen",
+-      role: "CTO",
+-      image: "/images/team/cto.jpg",
+-      description: "Tech innovator driving our digital transformation",
+-    },
+-    {
+-      name: "Emily Rodriguez",
+-      role: "Head of Design",
+-      image: "/images/team/design.jpg",
+-      description: "Creative force behind our user experience",
+-    },
+-  ];
++  const team = teamConfig;
+ 
+   return (
+     <div className="bg-gradient-to-b from-shop_light_bg to-white min-h-screen">
+@@ -274,12 +256,17 @@ const AboutPage = () => {
+               >
+                 <Card className="text-center hover:shadow-lg transition-all group">
+                   <CardContent className="p-6">
+-                    <div className="w-24 h-24 bg-gradient-to-br from-shop_light_green to-shop_dark_green rounded-full mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold group-hover:scale-105 transition-transform">
+-                      {member.name
+-                        .split(" ")
+-                        .map((n) => n[0])
+-                        .join("")}
+-                    </div>
++                    {/* eslint-disable-next-line @next/next/no-img-element */}
++                    <img
++                      src={member.image}
++                      alt={member.name}
++                      onError={(e) => {
++                        // Broken custom image path: fall back to the default avatar.
++                        const fallback = `/images/team/${["ceo", "cto", "design"][index]}.svg`;
++                        if (!e.currentTarget.src.endsWith(fallback)) e.currentTarget.src = fallback;
++                      }}
++                      className="w-24 h-24 rounded-full mx-auto mb-4 object-cover group-hover:scale-105 transition-transform"
++                    />
+                     <h3 className="text-xl font-bold text-shop_dark_green mb-1">
+                       {member.name}
+                     </h3>
+diff --git a/app/(client)/(user)/user/dashboard/page.tsx b/app/(client)/(user)/user/dashboard/page.tsx
+index 14de2cb..00928d5 100644
+--- a/app/(client)/(user)/user/dashboard/page.tsx
++++ b/app/(client)/(user)/user/dashboard/page.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import { useUser } from "@clerk/nextjs";
+ import { useEffect, useState } from "react";
+ import Link from "next/link";
+@@ -698,7 +699,7 @@ export default function UserDashboardPage() {
+             </CardHeader>
+             <CardContent>
+               <div className="text-3xl font-bold mb-1">
+-                ${stats.walletBalance.toFixed(2)}
++                {formatCurrency(stats.walletBalance)}
+               </div>
+               <p className="text-xs text-emerald-100">From refunds</p>
+             </CardContent>
+diff --git a/app/(client)/(user)/user/notifications/page.tsx b/app/(client)/(user)/user/notifications/page.tsx
+index 353ffdb..17d8d28 100644
+--- a/app/(client)/(user)/user/notifications/page.tsx
++++ b/app/(client)/(user)/user/notifications/page.tsx
+@@ -2,6 +2,7 @@
+ 
+ import { useUser } from "@clerk/nextjs";
+ import { useEffect, useState } from "react";
++import { useUserData } from "@/contexts/UserDataContext";
+ import {
+   Bell,
+   Info,
+@@ -52,6 +53,12 @@ export default function UserNotificationsPage() {
+   const [notifications, setNotifications] = useState<Notification[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [unreadCount, setUnreadCount] = useState(0);
++  const { setUnreadNotifications } = useUserData();
++
++  // Keep the header bell in step with this page once the list has loaded.
++  useEffect(() => {
++    if (!loading) setUnreadNotifications(unreadCount);
++  }, [unreadCount, loading, setUnreadNotifications]);
+   const [selectedNotification, setSelectedNotification] =
+     useState<Notification | null>(null);
+   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+diff --git a/app/api/admin/analytics/route.ts b/app/api/admin/analytics/route.ts
+index 3d3160a..79f5ffa 100644
+--- a/app/api/admin/analytics/route.ts
++++ b/app/api/admin/analytics/route.ts
+@@ -1,3 +1,4 @@
++import { formatCurrency } from "@/lib/currency";
+ import { NextRequest, NextResponse } from "next/server";
+ import { auth, clerkClient } from "@clerk/nextjs/server";
+ import { isUserAdmin } from "@/lib/adminUtils";
+@@ -248,7 +249,7 @@ export async function GET(req: NextRequest) {
+         .map((order: RecentOrder) => ({
+           action: `Order ${order.orderNumber} ${order.status}`,
+           time: new Date(order.orderDate).toLocaleDateString(),
+-          value: `$${order.totalPrice?.toLocaleString() || 0}`,
++          value: formatCurrency(order.totalPrice || 0, { minimumFractionDigits: 0 }),
+         }));
+ 
+       // Return analytics data in the format expected by the component
+diff --git a/app/api/admin/notifications/route.ts b/app/api/admin/notifications/route.ts
+index 219959a..988c2e2 100644
+--- a/app/api/admin/notifications/route.ts
++++ b/app/api/admin/notifications/route.ts
+@@ -1,3 +1,4 @@
++import { formatCurrency } from "@/lib/currency";
+ import { NextRequest, NextResponse } from "next/server";
+ import { auth, clerkClient } from "@clerk/nextjs/server";
+ import { isUserAdmin } from "@/lib/adminUtils";
+@@ -72,9 +73,7 @@ export async function GET(req: NextRequest) {
+       ...recentOrders.map((order: Order) => ({
+         id: `order-${order._id}`,
+         title: `New order ${order.orderNumber || `#${order._id.slice(-6)}`}`,
+-        description: `${order.customerName || order.email} - $${
+-          order.totalPrice
+-        }`,
++        description: `${order.customerName || order.email} - ${formatCurrency(order.totalPrice)}`,
+         time: getTimeAgo(new Date(order._createdAt)),
+         type: "order",
+         icon: "shopping-cart",
+diff --git a/app/api/admin/orders/[id]/route.ts b/app/api/admin/orders/[id]/route.ts
+index ddb7709..17c5746 100644
+--- a/app/api/admin/orders/[id]/route.ts
++++ b/app/api/admin/orders/[id]/route.ts
+@@ -1,3 +1,4 @@
++import { formatCurrency } from "@/lib/currency";
+ import { NextRequest, NextResponse } from "next/server";
+ import { auth, clerkClient } from "@clerk/nextjs/server";
+ import { isUserAdmin } from "@/lib/adminUtils";
+@@ -110,6 +111,34 @@ export async function PATCH(
+       }
+     });
+ 
++    // Keep the tracking timeline in sync with the status. Employees stamp these
++    // fields themselves; when an admin changes the status directly we stamp every
++    // stage up to the new status (without overwriting stamps that already exist).
++    if (updateData.status && updateData.status !== currentOrder.status) {
++      const stages: { statuses: string[]; at: string; by: string }[] = [
++        { statuses: ["address_confirmed", "order_confirmed", "packed", "ready_for_delivery", "out_for_delivery", "delivered", "completed"], at: "addressConfirmedAt", by: "addressConfirmedBy" },
++        { statuses: ["order_confirmed", "packed", "ready_for_delivery", "out_for_delivery", "delivered", "completed"], at: "orderConfirmedAt", by: "orderConfirmedBy" },
++        { statuses: ["packed", "ready_for_delivery", "out_for_delivery", "delivered", "completed"], at: "packedAt", by: "packedBy" },
++        { statuses: ["out_for_delivery", "delivered", "completed"], at: "dispatchedAt", by: "dispatchedBy" },
++        { statuses: ["delivered", "completed"], at: "deliveredAt", by: "deliveredBy" },
++      ];
++      const nowIso = new Date().toISOString();
++      const existing: Record<string, unknown> = await writeClient.fetch(
++        `*[_type == "order" && _id == $id][0]{ addressConfirmedAt, orderConfirmedAt, packedAt, dispatchedAt, deliveredAt }`,
++        { id }
++      );
++      for (const stage of stages) {
++        if (
++          stage.statuses.includes(updateData.status) &&
++          !existing?.[stage.at] &&
++          filteredUpdateData[stage.at] === undefined
++        ) {
++          filteredUpdateData[stage.at] = nowIso;
++          filteredUpdateData[stage.by] = userEmail || "admin";
++        }
++      }
++    }
++
+     // Add update timestamp
+     filteredUpdateData._updatedAt = new Date().toISOString();
+ 
+@@ -153,7 +182,7 @@ export async function PATCH(
+               filteredUpdateData.paymentStatus = "refunded";
+ 
+               console.log(
+-                `✅ Refunded $${refundAmount} to user wallet for order ${currentOrder.orderNumber}`
++                `✅ Refunded ${refundAmount} to user wallet for order ${currentOrder.orderNumber}`
+               );
+             } else {
+               console.error(
+@@ -242,9 +271,7 @@ export async function PATCH(
+ 
+     return NextResponse.json({
+       message: walletRefunded
+-        ? `Order updated successfully. $${refundAmount.toFixed(
+-            2
+-          )} refunded to customer's wallet.`
++        ? `Order updated successfully. ${formatCurrency(refundAmount)} refunded to customer's wallet.`
+         : "Order updated successfully",
+       order: updatedOrder,
+       walletRefunded,
+diff --git a/app/api/orders/refund/route.ts b/app/api/orders/refund/route.ts
+index c86937a..07b7327 100644
+--- a/app/api/orders/refund/route.ts
++++ b/app/api/orders/refund/route.ts
+@@ -1,3 +1,4 @@
++import { formatCurrency } from "@/lib/currency";
+ import { NextRequest, NextResponse } from "next/server";
+ import { auth } from "@clerk/nextjs/server";
+ import { writeClient, client } from "@/sanity/lib/client";
+@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
+           .commit();
+ 
+         console.log(
+-          `Added $${refundAmount} to user wallet. New balance: $${newBalance}`
++          `Added ${formatCurrency(refundAmount)} to user wallet. New balance: ${formatCurrency(newBalance)}`
+         );
+       }
+     }
+diff --git a/components/FeaturedCategory.tsx b/components/FeaturedCategory.tsx
+index a18007e..c07c77f 100644
+--- a/components/FeaturedCategory.tsx
++++ b/components/FeaturedCategory.tsx
+@@ -1,3 +1,4 @@
++import { formatCurrency } from "@/lib/currency";
+ import Container from "./Container";
+ import Image from "next/image";
+ import { urlFor } from "@/sanity/lib/image";
+@@ -37,7 +38,7 @@ const FeaturedCategory = async () => {
+               />
+               <p className="text-xs font-bold mt-2">
+                 Starting at{" "}
+-                <span className="text-shop_dark_green">${category?.range}</span>
++                <span className="text-shop_dark_green">{formatCurrency(Number(category?.range ?? 0), { minimumFractionDigits: 0 })}</span>
+               </p>
+             </div>
+           </div>
+diff --git a/components/ProductCatalog.tsx b/components/ProductCatalog.tsx
+index 06cf5c4..5944403 100644
+--- a/components/ProductCatalog.tsx
++++ b/components/ProductCatalog.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import { useState, useMemo } from "react";
+ import { BRANDS_QUERYResult, Category, Product } from "@/sanity.types";
+ import ProductCard from "./ProductCard";
+@@ -430,8 +431,8 @@ const ProductCatalog = ({ initialProducts, categories, brands }: Props) => {
+                       />
+                     </div>
+                     <div className="flex items-center justify-between text-sm text-gray-600">
+-                      <span>${priceRange[0]}</span>
+-                      <span>${priceRange[1]}</span>
++                      <span>{formatCurrency(priceRange[0], { minimumFractionDigits: 0 })}</span>
++                      <span>{formatCurrency(priceRange[1], { minimumFractionDigits: 0 })}</span>
+                     </div>
+                   </CollapsibleContent>
+                 </Collapsible>
+diff --git a/components/UserDropdown.tsx b/components/UserDropdown.tsx
+index f89c688..412d7b0 100644
+--- a/components/UserDropdown.tsx
++++ b/components/UserDropdown.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import React, { useState } from "react";
+ import Link from "next/link";
+ import {
+@@ -106,7 +107,7 @@ const UserDropdown = () => {
+                   </span>
+                 </div>
+                 <span className="text-lg font-bold text-shop_dark_green">
+-                  ${walletBalance.toFixed(2)}
++                  {formatCurrency(walletBalance)}
+                 </span>
+               </div>
+             </div>
+diff --git a/components/admin/AdminAnalytics.tsx b/components/admin/AdminAnalytics.tsx
+index 429c353..3b3dc38 100644
+--- a/components/admin/AdminAnalytics.tsx
++++ b/components/admin/AdminAnalytics.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import React, { useState, useEffect } from "react";
+ import { motion } from "motion/react";
+ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+@@ -107,7 +108,7 @@ const AdminAnalytics = () => {
+   }) => {
+     const isPositive = change >= 0;
+     const formatValue = (val: number) => {
+-      if (format === "currency") return `$${val.toLocaleString()}`;
++      if (format === "currency") return formatCurrency(val, { minimumFractionDigits: 0 });
+       return val.toLocaleString();
+     };
+ 
+@@ -331,7 +332,7 @@ const AdminAnalytics = () => {
+                       </div>
+                     </div>
+                     <Badge className="bg-shop_light_green/20 text-shop_dark_green">
+-                      ${product.revenue.toLocaleString()}
++                      {formatCurrency(product.revenue, { minimumFractionDigits: 0 })}
+                     </Badge>
+                   </div>
+                 )) || (
+diff --git a/components/admin/AdminAnalyticsNew.tsx b/components/admin/AdminAnalyticsNew.tsx
+index 9744972..cc19417 100644
+--- a/components/admin/AdminAnalyticsNew.tsx
++++ b/components/admin/AdminAnalyticsNew.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import React, { useState, useEffect } from "react";
+ import { motion } from "motion/react";
+ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+@@ -171,7 +172,7 @@ const AdminAnalytics = () => {
+   }) => {
+     const isPositive = change >= 0;
+     const formatValue = (val: number) => {
+-      if (format === "currency") return `$${val.toLocaleString()}`;
++      if (format === "currency") return formatCurrency(val, { minimumFractionDigits: 0 });
+       return val.toLocaleString();
+     };
+ 
+@@ -462,7 +463,7 @@ const AdminAnalytics = () => {
+                       <Tooltip
+                         formatter={(value, name) => [
+                           name === "revenue"
+-                            ? `$${value.toLocaleString()}`
++                            ? formatCurrency(Number(value), { minimumFractionDigits: 0 })
+                             : value,
+                           name === "revenue" ? "Revenue" : "Sales",
+                         ]}
+@@ -499,7 +500,7 @@ const AdminAnalytics = () => {
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+               <div className="text-center p-4 bg-green-50 rounded-lg">
+                 <div className="text-2xl font-bold text-green-600">
+-                  ${analytics?.revenue?.total.toLocaleString() || 0}
++                  {formatCurrency(analytics?.revenue?.total || 0, { minimumFractionDigits: 0 })}
+                 </div>
+                 <div className="text-sm text-green-500">Total Revenue</div>
+               </div>
+diff --git a/components/admin/AdminDashboardOverview.tsx b/components/admin/AdminDashboardOverview.tsx
+index 4aaa64f..2c800fe 100644
+--- a/components/admin/AdminDashboardOverview.tsx
++++ b/components/admin/AdminDashboardOverview.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import React, { useEffect, useState } from "react";
+ import { motion } from "motion/react";
+ import {
+@@ -172,7 +173,7 @@ const AdminDashboardOverview = () => {
+ 
+   const formatValue = (value: number, format: string) => {
+     if (format === "currency") {
+-      return `$${value.toLocaleString()}`;
++      return formatCurrency(value, { minimumFractionDigits: 0 });
+     }
+     return value.toLocaleString();
+   };
+diff --git a/components/admin/AdminHeader.tsx b/components/admin/AdminHeader.tsx
+index faaca0f..a337c67 100644
+--- a/components/admin/AdminHeader.tsx
++++ b/components/admin/AdminHeader.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import React, { useEffect, useState } from "react";
+ import { Bell, Search, Calendar, Clock } from "lucide-react";
+ import { Button } from "@/components/ui/button";
+@@ -280,7 +281,7 @@ const AdminHeader = ({ user }: AdminHeaderProps) => {
+               {loading ? (
+                 <div className="animate-pulse bg-gray-200 h-6 w-16 mx-auto rounded"></div>
+               ) : (
+-                `$${stats.todaysRevenue.toLocaleString()}`
++                formatCurrency(stats.todaysRevenue, { minimumFractionDigits: 0 })
+               )}
+             </div>
+             <div className="text-xs text-light-color">Today&apos;s Revenue</div>
+diff --git a/components/admin/Charts.tsx b/components/admin/Charts.tsx
+index b35a977..1ff0167 100644
+--- a/components/admin/Charts.tsx
++++ b/components/admin/Charts.tsx
+@@ -1,3 +1,4 @@
++import { formatCurrency } from "@/lib/currency";
+ import { FC } from "react";
+ import {
+   Card,
+@@ -78,7 +79,7 @@ export const RevenueTrendChart: FC<RevenueTrendChartProps> = ({ data }) => {
+               tickLine={false}
+               axisLine={false}
+               tickMargin={8}
+-              tickFormatter={(value) => `$${value}`}
++              tickFormatter={(value) => formatCurrency(Number(value), { minimumFractionDigits: 0 })}
+             />
+             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+             <defs>
+diff --git a/components/admin/EmployeeAnalyticsDashboard.tsx b/components/admin/EmployeeAnalyticsDashboard.tsx
+index 9949c95..3627bbc 100644
+--- a/components/admin/EmployeeAnalyticsDashboard.tsx
++++ b/components/admin/EmployeeAnalyticsDashboard.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import { useState, useEffect } from "react";
+ import { getCurrentEmployee, getAllEmployees } from "@/actions/employeeActions";
+ import { getOrdersForEmployee } from "@/actions/orderEmployeeActions";
+@@ -108,7 +109,7 @@ export default function EmployeeAnalyticsDashboard() {
+           <div className="flex items-center justify-between">
+             <div>
+               <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
+-              <p className="text-2xl font-bold">${totalRevenue.toFixed(2)}</p>
++              <p className="text-2xl font-bold">{formatCurrency(totalRevenue)}</p>
+             </div>
+             <DollarSign className="h-12 w-12 text-green-500" />
+           </div>
+@@ -128,7 +129,7 @@ export default function EmployeeAnalyticsDashboard() {
+           <div className="flex items-center justify-between">
+             <div>
+               <p className="text-sm text-gray-600 mb-1">Cash Collected</p>
+-              <p className="text-2xl font-bold">${cashCollected.toFixed(2)}</p>
++              <p className="text-2xl font-bold">{formatCurrency(cashCollected)}</p>
+             </div>
+             <TrendingUp className="h-12 w-12 text-purple-500" />
+           </div>
+@@ -139,7 +140,7 @@ export default function EmployeeAnalyticsDashboard() {
+             <div>
+               <p className="text-sm text-gray-600 mb-1">Pending Collection</p>
+               <p className="text-2xl font-bold text-orange-600">
+-                ${cashPending.toFixed(2)}
++                {formatCurrency(cashPending)}
+               </p>
+             </div>
+             <Clock className="h-12 w-12 text-orange-500" />
+diff --git a/components/admin/OrderDetailsSidebar.tsx b/components/admin/OrderDetailsSidebar.tsx
+index ee3af49..25dc1a0 100644
+--- a/components/admin/OrderDetailsSidebar.tsx
++++ b/components/admin/OrderDetailsSidebar.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import { siteConfig } from "@/config/site";
+ 
+ import React, { useState } from "react";
+@@ -195,9 +196,7 @@ const OrderDetailsSidebar: React.FC<OrderDetailsSidebarProps> = ({
+       // Show success message with refund info if applicable
+       if (result.walletRefunded && result.refundAmount) {
+         showToast.success(
+-          `Order updated successfully! $${result.refundAmount.toFixed(
+-            2
+-          )} refunded to customer's wallet.`
++          `Order updated successfully! ${formatCurrency(result.refundAmount)} refunded to customer's wallet.`
+         );
+       } else {
+         showToast.success("Order updated successfully");
+diff --git a/components/admin/UserDetailsSidebar.tsx b/components/admin/UserDetailsSidebar.tsx
+index 7953139..5232208 100644
+--- a/components/admin/UserDetailsSidebar.tsx
++++ b/components/admin/UserDetailsSidebar.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import React, { useState } from "react";
+ import {
+   Sheet,
+@@ -308,7 +309,7 @@ export const UserDetailsSidebar: React.FC<UserDetailsSidebarProps> = ({
+                           Total Spent
+                         </div>
+                         <div className="text-lg font-semibold">
+-                          ${user.totalSpent.toFixed(2)}
++                          {formatCurrency(user.totalSpent)}
+                         </div>
+                       </div>
+                     </div>
+diff --git a/components/wheel/SpinWheel.tsx b/components/wheel/SpinWheel.tsx
+index d4cdfbe..4a18a91 100644
+--- a/components/wheel/SpinWheel.tsx
++++ b/components/wheel/SpinWheel.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { formatCurrency } from "@/lib/currency";
+ import { useEffect, useMemo, useRef, useState } from "react";
+ import Image from "next/image";
+ import { useRouter } from "next/navigation";
+@@ -274,7 +275,7 @@ export default function SpinWheel({
+                             strokeWidth="3"
+                             paintOrder="stroke"
+                           >
+-                            ${slice.price.toFixed(2)} value
++                            {formatCurrency(slice.price)} value
+                           </text>
+                         </g>
+                       </g>
+diff --git a/config/team.ts b/config/team.ts
+new file mode 100644
+index 0000000..ca0901c
+--- /dev/null
++++ b/config/team.ts
+@@ -0,0 +1,43 @@
++/**
++ * Leadership team shown on the About page.
++ * Every field can be set from the environment; by default a neutral SVG avatar is used.
++ *
++ * To use a real photo: put the file in /public/images/team/ (e.g. ceo.jpg) and set
++ *   NEXT_PUBLIC_TEAM_CEO_IMAGE=/images/team/ceo.jpg
++ * (a full https:// URL also works). Leave it empty to keep the default SVG.
++ */
++const env = (value: string | undefined, fallback: string) =>
++  value && value.trim() ? value.trim() : fallback;
++
++export const teamConfig = [
++  {
++    name: env(process.env.NEXT_PUBLIC_TEAM_CEO_NAME, "Chief Executive"),
++    role: env(process.env.NEXT_PUBLIC_TEAM_CEO_ROLE, "CEO & Founder"),
++    description: env(
++      process.env.NEXT_PUBLIC_TEAM_CEO_DESCRIPTION,
++      "Leading our vision of fresh, affordable groceries for every home"
++    ),
++    image: env(process.env.NEXT_PUBLIC_TEAM_CEO_IMAGE, "/images/team/ceo.svg"),
++  },
++  {
++    name: env(process.env.NEXT_PUBLIC_TEAM_CTO_NAME, "Chief Technology Officer"),
++    role: env(process.env.NEXT_PUBLIC_TEAM_CTO_ROLE, "CTO"),
++    description: env(
++      process.env.NEXT_PUBLIC_TEAM_CTO_DESCRIPTION,
++      "Driving the technology behind our online store"
++    ),
++    image: env(process.env.NEXT_PUBLIC_TEAM_CTO_IMAGE, "/images/team/cto.svg"),
++  },
++  {
++    name: env(process.env.NEXT_PUBLIC_TEAM_DESIGN_NAME, "Design Lead"),
++    role: env(process.env.NEXT_PUBLIC_TEAM_DESIGN_ROLE, "Head of Design"),
++    description: env(
++      process.env.NEXT_PUBLIC_TEAM_DESIGN_DESCRIPTION,
++      "Creating a simple, friendly shopping experience"
++    ),
++    image: env(
++      process.env.NEXT_PUBLIC_TEAM_DESIGN_IMAGE,
++      "/images/team/design.svg"
++    ),
++  },
++];
+diff --git a/contexts/UserDataContext.tsx b/contexts/UserDataContext.tsx
+index 1575b16..d4a7d01 100644
+--- a/contexts/UserDataContext.tsx
++++ b/contexts/UserDataContext.tsx
+@@ -23,6 +23,8 @@ interface UserData {
+ 
+ interface UserDataContextType extends UserData {
+   refreshUserData: () => Promise<void>;
++  /** Set the bell's unread count immediately (e.g. after reading/deleting notifications). */
++  setUnreadNotifications: (count: number) => void;
+ }
+ 
+ const UserDataContext = createContext<UserDataContextType | undefined>(
+@@ -148,6 +150,12 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
+     };
+   }, [isLoaded, user]);
+ 
++  const setUnreadNotifications = useCallback((count: number) => {
++    lastCountRef.current = count;
++    setUserData((prev) => ({ ...prev, unreadNotifications: count }));
++    if (cachedData) cachedData = { ...cachedData, unreadNotifications: count };
++  }, []);
++
+   const refreshUserData = useCallback(async () => {
+     await fetchUserData(true);
+   }, [fetchUserData]);
+@@ -157,6 +165,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
+       value={{
+         ...userData,
+         refreshUserData,
++        setUnreadNotifications,
+       }}
+     >
+       {children}
+diff --git a/public/images/team/ceo.svg b/public/images/team/ceo.svg
+new file mode 100644
+index 0000000..3af73dc
+--- /dev/null
++++ b/public/images/team/ceo.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="ceo avatar"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e00024"/><stop offset="1" stop-color="#111111"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="100" cy="78" r="34" fill="#fff" opacity=".92"/><path d="M36 200c0-40 28-66 64-66s64 26 64 66z" fill="#fff" opacity=".92"/><path d="M60 150 L80 128 L100 150 L120 128 L140 150 V160 H60Z" fill="#fff" opacity=".25"/></svg>
+diff --git a/public/images/team/cto.svg b/public/images/team/cto.svg
+new file mode 100644
+index 0000000..564c868
+--- /dev/null
++++ b/public/images/team/cto.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="cto avatar"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#111111"/><stop offset="1" stop-color="#e00024"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="100" cy="78" r="34" fill="#fff" opacity=".92"/><path d="M36 200c0-40 28-66 64-66s64 26 64 66z" fill="#fff" opacity=".92"/><rect x="64" y="148" width="72" height="8" rx="4" fill="#fff" opacity=".25"/></svg>
+diff --git a/public/images/team/design.svg b/public/images/team/design.svg
+new file mode 100644
+index 0000000..234e652
+--- /dev/null
++++ b/public/images/team/design.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="design avatar"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b8001d"/><stop offset="1" stop-color="#2b2b2b"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="100" cy="78" r="34" fill="#fff" opacity=".92"/><path d="M36 200c0-40 28-66 64-66s64 26 64 66z" fill="#fff" opacity=".92"/><circle cx="138" cy="150" r="8" fill="#fff" opacity=".25"/></svg>
+diff --git a/sanity/queries/userQueries.ts b/sanity/queries/userQueries.ts
+index 6f9c818..8492d5e 100644
+--- a/sanity/queries/userQueries.ts
++++ b/sanity/queries/userQueries.ts
+@@ -225,7 +225,9 @@ export const ORDER_BY_ID_QUERY = `
+     cashCollectedAt,
+     paymentReceivedAt,
+     deliveredBy,
+-    deliveredAt
++    deliveredAt,
++    cancelledAt,
++    cancelledBy
+   }
+ `;
+ 
+@@ -328,9 +330,10 @@ export const USER_NOTIFICATIONS_QUERY = `
+ 
+ export const getUserNotifications = async (clerkUserId: string) => {
+   try {
+-    const { data } = await sanityFetch({
+-      query: USER_NOTIFICATIONS_QUERY,
+-      params: { clerkUserId },
++    // Always fresh: a cached copy would show already-read items as unread.
++    const { backendClient } = await import("../lib/backendClient");
++    const data = await backendClient.fetch(USER_NOTIFICATIONS_QUERY, {
++      clerkUserId,
+     });
+     return data?.notifications || [];
+   } catch (error) {
+@@ -351,16 +354,18 @@ export const markNotificationAsRead = async (
+   notificationId: string
+ ) => {
+   try {
+-    const user = await sanityFetch({
+-      query: MARK_NOTIFICATION_READ_QUERY,
+-      params: { clerkUserId },
++    // Read-modify-write must use fresh, uncached data.
++    const { backendClient } = await import("../lib/backendClient");
++    const userDoc = await backendClient.fetch(MARK_NOTIFICATION_READ_QUERY, {
++      clerkUserId,
+     });
++    const user = { data: userDoc };
+ 
+     if (!user.data) {
+       throw new Error("User not found");
+     }
+ 
+-    const updatedNotifications = user.data.notifications.map(
++    const updatedNotifications = (user.data.notifications || []).map(
+       (notification: any) => {
+         if (notification.id === notificationId) {
+           return {
+@@ -392,16 +397,17 @@ export const deleteUserNotification = async (
+   notificationId: string
+ ) => {
+   try {
+-    const user = await sanityFetch({
+-      query: MARK_NOTIFICATION_READ_QUERY,
+-      params: { clerkUserId },
++    const { backendClient } = await import("../lib/backendClient");
++    const userDoc = await backendClient.fetch(MARK_NOTIFICATION_READ_QUERY, {
++      clerkUserId,
+     });
++    const user = { data: userDoc };
+ 
+     if (!user.data) {
+       throw new Error("User not found");
+     }
+ 
+-    const updatedNotifications = user.data.notifications.filter(
++    const updatedNotifications = (user.data.notifications || []).filter(
+       (notification: any) => notification.id !== notificationId
+     );
+ 
